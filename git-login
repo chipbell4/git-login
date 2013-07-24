@@ -8,6 +8,7 @@ import subprocess
 class ProfileEntry:
 	def __init__(self, encoded='||'):
 		L = encoded.split('|')
+		L = map(lambda s : s.strip(), L)
 		self.profile_name = L[0]
 		self.full_name = L[1]
 		self.email = L[2]
