@@ -1,0 +1,177 @@
+#!/usr/bin/python
+# git-login
+# creates and switches between different git profiles
+import sys
+import os
+import subprocess
+
+class ProfileEntry:
+	def __init__(self, encoded='||'):
+		L = encoded.split('|')
+		self.profile_name = L[0]
+		self.full_name = L[1]
+		self.email = L[2]
+
+	def __repr__(self):
+		return self.__build_str("{0}|{1}|{2}")
+	
+	def __build_str(self, format_str):
+		return format_str.format(self.profile_name, self.full_name, self.email)
+
+	def pretty(self):
+		return self.__build_str("{0}\n  {1}\n  {2}")
+
+class LoginFile:
+	def __init__(self, path):
+		self.__path = path
+
+	def __open(self, mode):
+		self.__file = user_open(self.__path, mode)
+
+	def __close(self):
+		self.__file.close()
+
+	def load(self):
+		self.__open('r')
+		self.profiles = []
+		for line in self.__file:
+			self.profiles.append(ProfileEntry(line))
+		self.__close()
+	
+	def write(self):
+		self.__open('w')
+		self.__file.write( '\n'.join( map(str, self.profiles) )  )
+		self.__close()
+
+	def __find(self, profile_name):
+		for k in xrange(len(self.profiles)):
+			if self.profiles[k].profile_name == profile_name:
+				return k
+		return -1
+		
+	def delete(self, profile):
+		k = self.__find(profile.profile_name)
+		if k < 0:
+			return False
+		self.profiles.pop(k)
+		return True
+
+	def add(self, profile):
+		k = self.__find(profile.profile_name)
+		if k < 0:
+			self.profiles.append(profile)
+			return True
+		return False
+	
+	def get(self, profile):
+		k = self.__find(profile.profile_name)
+		if k < 0:
+			return None
+		else:
+			return self.profiles[k]
+	
+	def pretty(self):
+		s = ''
+		for profile in self.profiles:
+			s += profile.pretty() + "\n"
+		return s
+
+
+def get_login_file():
+	# read the existing profiles
+	login_path = cmd('git config git-login.path')
+	L = LoginFile(login_path)
+	L.load()
+	return L
+
+
+def user_open(path, mode):
+	return open(os.path.expanduser(path), mode)
+
+def cmd(s):
+	return subprocess.check_output(s, shell=True).strip()
+
+def convertToSingleWords(s):
+	return s.strip().replace(' ', '_').replace('\t', '_').replace('\n','')
+
+def promptOrExit(prompt, variable_name):
+	s = raw_input(prompt)
+	if s == '':
+		print 'No ' + variable_name + ' provided, aborting'
+		exit()
+	return s
+
+def create_profile():
+	print('Creating a new Profile')
+	profile_name = promptOrExit('Profile Name: ', 'profile name')
+	profile_name = convertToSingleWords(profile_name)
+
+	full_name = promptOrExit('Full Name: ', 'name')
+
+	email = promptOrExit('Email: ', 'email')
+	email = convertToSingleWords(email)
+
+	# build the profile
+	profile = ProfileEntry()
+	profile.profile_name = profile_name
+	profile.full_name = full_name
+	profile.email = email
+
+	L = get_login_file()
+	if not L.add(profile):
+		print 'Overwriting existing profile'
+		L.delete(profile)
+		L.add(profile)
+	L.write()
+	print 'Profile created successfully'
+
+def delete_profile():
+	profile_name = promptOrExit('Profile name: ', 'profile name')
+	p = ProfileEntry()
+	p.profile_name = profile_name
+	L = get_login_file()
+	if not L.delete(p):
+		print 'No profile found'
+	else:
+		L.write()
+		print 'Profile deleted'
+
+def init():
+	print 'Setting up...'
+	path = raw_input('git-login profile file (default is ~/.git_profiles): ')
+	if path == '':
+		path = '~/.git_profiles'
+	# creating file
+	cmd('touch ' + path)
+	# append to gitconfig
+	with user_open('~/.gitconfig', 'a') as f:
+		f.write('[git-login]\n  path = ' + path)
+
+def print_help():
+	pass
+
+def switch_users():
+	L = get_login_file()
+	profile = ProfileEntry()
+	profile.profile_name = sys.argv[1]
+	profile = L.get(profile)
+	# write the git config entries
+	cmd('git config user.name \"' + profile.full_name + '\"')
+	cmd('git config user.email \"' + profile.email + '\"')
+
+def list_all():
+	L = get_login_file()
+	print L.pretty()
+
+if len(sys.argv) < 2:
+	print_help()
+elif sys.argv[1] == 'create':
+	create_profile()
+elif sys.argv[1] == 'delete':
+	delete_profile()
+elif sys.argv[1] == 'init':
+	init()
+elif sys.argv[1] == 'list':
+	list_all()
+else:
+	switch_users()
